@@ -10,6 +10,7 @@ class Board():
                  green_apples_count=2, 
                  red_apples_count=1,
                  snake_size=3):
+        self.lost = False
         self.area = numpy.full((board_size, board_size), '0', dtype=str)
 
         self.board_size = board_size
@@ -28,20 +29,21 @@ class Board():
 
     ### TODO
     # There has to be a better way to do this lol
-    def init_apples(self):
+    def init_apples(self, all=True):
         apple_types = [self.green_apples_pos, self.red_apples_pos]
 
         for apple_type_index, apple_type in enumerate(apple_types):
-            for index, _ in enumerate(apple_type):
-                x = self.random_int_within_width()
-                y = self.random_int_within_width()
-                
-                while (self.area[x][y] != '0'):
+            for index, apple in enumerate(apple_type):
+                if (all or (apple == [-1, -1]).all()):
                     x = self.random_int_within_width()
                     y = self.random_int_within_width()
 
-                apple_type[index] = [x, y]
-                self.area[x][y] = APPLE_CODES[apple_type_index]
+                    while (self.area[x][y] != '0'):
+                        x = self.random_int_within_width()
+                        y = self.random_int_within_width()
+
+                    apple_type[index] = [x, y]
+                    self.area[x][y] = APPLE_CODES[apple_type_index]
 
     def init_snake(self):
         self.snake_pos = []
@@ -81,7 +83,7 @@ class Board():
         for snake_chunk in self.snake_pos:
             self.area[snake_chunk[0]][snake_chunk[1]] = 'S'
 
-        self.area[self.snake_pos[-1][0]][self.snake_pos[-1][1]] = 'H'
+        self.area[self.snake_pos[0][0]][self.snake_pos[0][1]] = 'H'
 
     def update_area_apples(self):
         apple_types = [self.green_apples_pos, self.red_apples_pos]
@@ -99,6 +101,54 @@ class Board():
 
     def random_int_within_width(self):
         return random.randint(0, self.board_size - 1)
+
+    def move_snake(self, direction):
+        new_head_pos = [sum(x) for x in zip(self.snake_pos[0], direction)]
+
+        if self.is_out_of_bounds(new_head_pos):
+            print("Out of bounds!")
+            self.lost = True
+            return False
+
+        ate_green = False
+        ate_red = False
+
+        for index, green_apple in enumerate(self.green_apples_pos):
+            if new_head_pos[0] == green_apple[0] and new_head_pos[1] == green_apple[1]:
+                ate_green = True
+                self.green_apples_pos[index] = [-1, -1]
+
+        for index, red_apple in enumerate(self.red_apples_pos):
+            if new_head_pos[0] == red_apple[0] and new_head_pos[1] == red_apple[1]:
+                ate_red = True
+                self.red_apples_pos[index] = [-1, -1]
+
+        if ate_red and len(self.snake_pos) <= 1:
+            print("Got too small!")
+            self.lost = True
+            return False
+
+        self.snake_pos.insert(0, new_head_pos)
+        if not ate_green:
+            self.snake_pos.pop()
+        if ate_red:
+            self.snake_pos.pop()
+        
+        if new_head_pos in self.snake_pos[1:]:
+            print("Hit tail!")
+            self.lost = True
+            return False 
+
+        if ate_green or ate_red:
+            self.init_apples(all=False)
+
+        self.update_area()
+
+    def is_out_of_bounds(self, position):
+        for value in position:
+            if (value < 0 or value >= self.board_size):
+                return True
+        return False
 
     def display_area_cli(self):
         displayed_board = self.area.T
