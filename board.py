@@ -27,6 +27,17 @@ class Board():
 
         self.update_area()
 
+    def reset_board(self):
+        self.area = numpy.full((self.board_size, self.board_size), '0', dtype=str)
+
+        self.snake_pos = []
+        self.init_snake()
+
+        self.green_apples_pos = numpy.full((self.green_apples_count, 2), 0)
+        self.red_apples_pos = numpy.full((self.red_apples_count, 2), 0)
+        self.init_apples()
+        pass
+
     ### TODO
     # There has to be a better way to do this lol
     def init_apples(self, all=True):
@@ -81,9 +92,11 @@ class Board():
 
     def update_area_snake(self):
         for snake_chunk in self.snake_pos:
-            self.area[snake_chunk[0]][snake_chunk[1]] = 'S'
+            if (snake_chunk[0] < self.board_size and snake_chunk[1] < self.board_size):
+                self.area[snake_chunk[0]][snake_chunk[1]] = 'S'
 
-        self.area[self.snake_pos[0][0]][self.snake_pos[0][1]] = 'H'
+        if (self.snake_pos[0][0] < self.board_size and self.snake_pos[0][1] < self.board_size):
+            self.area[self.snake_pos[0][0]][self.snake_pos[0][1]] = 'H'
 
     def update_area_apples(self):
         apple_types = [self.green_apples_pos, self.red_apples_pos]
@@ -106,9 +119,8 @@ class Board():
         new_head_pos = [sum(x) for x in zip(self.snake_pos[0], direction)]
 
         if self.is_out_of_bounds(new_head_pos):
-            print("Out of bounds!")
+            #print("Out of bounds!")
             self.lost = True
-            return False
 
         ate_green = False
         ate_red = False
@@ -124,25 +136,32 @@ class Board():
                 self.red_apples_pos[index] = [-1, -1]
 
         if ate_red and len(self.snake_pos) <= 1:
-            print("Got too small!")
+            #print("Got too small!")
             self.lost = True
-            return False
 
         self.snake_pos.insert(0, new_head_pos)
         if not ate_green:
             self.snake_pos.pop()
-        if ate_red:
+        if ate_red and not self.lost:
             self.snake_pos.pop()
         
         if new_head_pos in self.snake_pos[1:]:
-            print("Hit tail!")
+            #print("Hit tail!")
             self.lost = True
-            return False 
 
         if ate_green or ate_red:
             self.init_apples(all=False)
 
         self.update_area()
+
+        if self.lost:
+            return "L"
+        elif ate_green:
+            return "G"
+        elif ate_red:
+            return "R"
+        else:
+            return "0"
 
     def is_out_of_bounds(self, position):
         for value in position:
