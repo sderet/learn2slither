@@ -1,5 +1,6 @@
 import board
 import numpy
+import json
 import random
 import math
 
@@ -17,7 +18,7 @@ def partial_sum(x):
     return total
 
 class Interpreter:
-    def __init__(self, board=board.Board(), learning_rate=0.1, exploration_rate=0.05, decay=0.8, sessions=100, epoch=0, save_to="values.qval", load_model=False, vision_length=1, max_epoch=100000):
+    def __init__(self, board=board.Board(), learning_rate=0.1, exploration_rate=0.05, decay=0.8, sessions=100, epoch=0, save_to="values.qval", load_model=False, vision_length=1, max_epoch=100000, replay_file="replay.rpl"):
         self.board = board
         self.exploration_rate = exploration_rate
         self.decay = decay
@@ -25,8 +26,13 @@ class Interpreter:
         self.sessions = sessions
         self.epoch = epoch
         self.max_epoch = max_epoch
-        self.save_to = save_to
         self.vision_length = vision_length
+
+        self.starting_state = board.area.tolist()
+        self.inputs = []
+
+        self.save_to = save_to
+        self.replay_file = replay_file
 
         # Number of combinations. why bother with repeats?
         self.states = numpy.zeros([math.comb(vision_length * len(VALUES) + len(DIRECTIONS) - 1, len(DIRECTIONS)), len(ACTIONS)])
@@ -69,9 +75,6 @@ class Interpreter:
                 value = VALUES[viewed_direction[current_distance]]
             
             types.append(value)
-            #total_state_value += value + (current_distance * len(VALUES))
-
-        #total_state_value += partial_sum(numpy.count_nonzero(types))
 
         actions = [x for (y,x) in sorted(zip(types, ACTIONS), key=lambda pair: pair[0])]
 
@@ -105,6 +108,7 @@ class Interpreter:
             action = numpy.argmax(self.states[self.current_state])
 
         direction = DIRECTIONS[ACTIONS.index(actions[action])]
+        self.inputs.append(direction)
 
         type_eaten = self.board.move_snake(direction)
         reward = REWARDS[type_eaten]
@@ -124,11 +128,16 @@ class Interpreter:
     def save_qvalues(self):
         numpy.savetxt(self.save_to, self.states)
 
+    def save_replay(self, replay):
+        with open(self.replay_file, 'w') as fd:
+            json.dump(replay, fd, indent=4)
+
     def loop(self):
         ep_count = 0
 
         longest_size = 0
         longest_life = 0
+        best = {"starting_state": 0, "inputs": []}
 
         while ep_count < self.sessions:
             while self.board.lost == False and self.epoch < self.max_epoch:
@@ -143,15 +152,20 @@ class Interpreter:
             if len(self.board.snake_pos) > longest_size:
                 print(f"Newest longest size: {len(self.board.snake_pos)}")
                 longest_size = len(self.board.snake_pos)
+                best['starting_state'] = self.starting_state
+                best['inputs'] = self.inputs
 
-            new_board = board.Board()
-            self.board = new_board
+            self.board = board.Board()
+            self.starting_state = self.board.area.tolist()
+            self.inputs = []
+
             self.epoch = 0
             print(f"Episode {ep_count}")
         
         print(f'Longest size: {longest_size}\nLongest session: {longest_life}')
 
         self.save_qvalues()
+        self.save_replay(best)
 
 
 if __name__ == "__main__":
