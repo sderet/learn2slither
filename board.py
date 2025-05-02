@@ -39,7 +39,7 @@ class Board():
         pass
 
     ### TODO
-    # There has to be a better way to do this lol
+    # There has to be a better way to do this
     def init_apples(self, all=True):
         apple_types = [self.green_apples_pos, self.red_apples_pos]
 
