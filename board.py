@@ -9,11 +9,14 @@ class Board():
                  board_size=10,
                  green_apples_count=2, 
                  red_apples_count=1,
-                 snake_size=3):
+                 snake_size=3,
+                 seed=False):
         self.lost = False
         self.area = numpy.full((board_size, board_size), '0', dtype=str)
 
         self.board_size = board_size
+
+        self.rngstate = random.getstate()
 
         self.snake_size = snake_size
         self.snake_pos = []
@@ -25,7 +28,60 @@ class Board():
         self.red_apples_pos = numpy.full((red_apples_count, 2), 0)
         self.init_apples()
 
+        if seed:
+            self.rngseed = seed
+        else:
+            self.rngseed = random.randrange(0, 100000)
+
+        random.seed(self.rngseed)
+        self.rngstate = random.getstate()
+
         self.update_area()
+
+    def set_board(self, new_board):
+        self.area = numpy.array(new_board["starting_state"])
+        
+        self.snake_pos = []
+
+        green_apples_pos = []
+        red_apples_pos = []
+
+        self.red_apples_count = 0
+        self.green_apples_count = 0
+
+        for x, column in enumerate(self.area):
+            for y, cell in enumerate(column):
+                if cell == 'G':
+                    green_apples_pos.append([x, y])
+                    self.green_apples_count += 1
+                if cell == "R":
+                    red_apples_pos.append([x, y])
+                    self.red_apples_count += 1
+                if cell == 'H':
+                    self.snake_pos.append([x, y])
+
+        self.green_apples_pos = numpy.array(green_apples_pos)
+        self.red_apples_pos = numpy.array(red_apples_pos)
+
+        directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+
+        self.snake_size = 1
+        finished = False
+        while finished == False:
+            finished = True
+            for direction in directions:
+                new_pos = [self.snake_pos[-1][0] + direction[0], self.snake_pos[-1][1] + direction[1]]
+                if not self.is_out_of_bounds(new_pos) and new_pos not in self.snake_pos and self.area[new_pos[0]][new_pos[1]] == "S":
+                    self.snake_pos.append(new_pos)
+                    self.snake_size += 1
+                    finished = False
+                    break
+
+        self.rngseed = new_board["seed"]
+        random.seed(self.rngseed)
+        self.rngstate = random.getstate()
+
+        print("set new board!")
 
     def reset_board(self):
         self.area = numpy.full((self.board_size, self.board_size), '0', dtype=str)
@@ -38,9 +94,9 @@ class Board():
         self.init_apples()
         pass
 
-    ### TODO
-    # There has to be a better way to do this
     def init_apples(self, all=True):
+        random.setstate(self.rngstate)
+
         apple_types = [self.green_apples_pos, self.red_apples_pos]
 
         for apple_type_index, apple_type in enumerate(apple_types):
@@ -56,7 +112,11 @@ class Board():
                     apple_type[index] = [x, y]
                     self.area[x][y] = APPLE_CODES[apple_type_index]
 
+        self.rngstate = random.getstate()
+
     def init_snake(self):
+        random.setstate(self.rngstate)
+
         self.snake_pos = []
 
         # Head
@@ -88,6 +148,7 @@ class Board():
             self.snake_pos.append(copy.deepcopy(self.snake_pos[-1]))
             self.snake_pos[-1][dimension] = new_pos
 
+        self.rngstate = random.getstate()
         self.update_area_snake()
 
     def update_area_snake(self):

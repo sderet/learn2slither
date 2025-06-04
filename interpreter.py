@@ -2,7 +2,6 @@ import board
 import agent
 import numpy
 import json
-import random
 import math
 
 ACTIONS = ["U", "D", "L", "R"]

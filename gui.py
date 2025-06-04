@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog
+import json
 import board
 import time
 import learn2slither
@@ -48,24 +49,34 @@ class GraphicalInterface:
         button = tk.Button(self.root, text = "Load replay", command=self.open_replay_file)
         button.grid(column=0, row=2, sticky="e")
 
-        # Q values
-        self.q_values_frame = tk.Frame(self.root)
+        # Q values and other snake info
+        self.snake_info_frame = tk.Frame(self.root)
 
-        text = tk.StringVar(self.q_values_frame)
-        text.set("Q values:")
-        label = tk.Label(self.q_values_frame, textvariable=text)
+        text = tk.StringVar(self.snake_info_frame)
+        text.set("Snake size:")
+        label = tk.Label(self.snake_info_frame, textvariable=text)
         label.grid(column=0, row=0)
+
+        self.snake_size = tk.StringVar(self.snake_info_frame, 0)
+        self.snake_size.set(self.model.board.snake_size)
+        label = tk.Label(self.snake_info_frame, textvariable=self.snake_size)
+        label.grid(column=1, row=0)
+
+        text = tk.StringVar(self.snake_info_frame)
+        text.set("Q values:")
+        label = tk.Label(self.snake_info_frame, textvariable=text)
+        label.grid(column=0, row=1)
 
         self.q_values = []
         for index, qvalue in enumerate(DIRECTIONS):
-            qvalue = tk.StringVar(self.q_values_frame, 0)
-            label = tk.Label(self.q_values_frame, textvariable=qvalue)
-            label.grid(column=1 + DIRECTIONS[index][0], row=2 + DIRECTIONS[index][1])
+            qvalue = tk.StringVar(self.snake_info_frame, 0)
+            label = tk.Label(self.snake_info_frame, textvariable=qvalue)
+            label.grid(column=1 + DIRECTIONS[index][0], row=3 + DIRECTIONS[index][1])
             self.q_values.append(qvalue)
 
         self.update_displayed_qvalues()
 
-        self.q_values_frame.grid(row=0, column=1)
+        self.snake_info_frame.grid(row=0, column=1)
 
         # Movement buttons
         self.controls_frame = tk.Frame(self.root)
@@ -77,6 +88,14 @@ class GraphicalInterface:
         if stopped:
             self.controls_frame.grid()
             self.bind_directions()
+
+        # Replay controls
+        self.replay_frame = tk.Frame(self.root)
+
+        self.inputs = []
+        self.replay_mode = False
+        button = tk.Button(self.replay_frame, text = "Exit replay mode", command=self.exit_replay)
+        button.grid()
 
     def init_options_menu(self):
         self.stop()
@@ -111,8 +130,9 @@ class GraphicalInterface:
         for index, direction_full in enumerate(DIRECTIONS_NAMES):
             self.root.unbind(f"<{direction_full}>", self.bindings[index])
 
-    # Might be leaking something?
     def update_displayed_qvalues(self):
+        self.snake_size.set(len(self.model.board.snake_pos))
+
         state, order, _ = self.model.interpreter.calculate_state(self.model.board)
 
         for index, qvalue in enumerate(self.q_values):
@@ -125,9 +145,18 @@ class GraphicalInterface:
             initialdir="./",
             filetypes=(("Replay files", "*.rpl"), ("All files", "*.*"))
         )
-        print(replay_filename)
-        ## TODO: finish this function
-        
+
+        with open(replay_filename, 'r') as fd:
+            replay_data = json.load(fd)
+
+        self.model.board.set_board(replay_data)
+        self.model.board.lost = False
+
+        self.inputs = replay_data["inputs"]
+        self.replay_mode = True
+
+        self.draw_board()
+        self.replay_frame.grid()
 
     def close_options_menu(self):
         self.menu_window.destroy()
@@ -135,18 +164,24 @@ class GraphicalInterface:
     def speed_option_changed(self, *args):
         self.speedlimit = FPS_OPTIONS.index(self.current_speed_option.get())
 
+    def exit_replay(self):
+        self.replay_mode = False
+        self.stop()
+        self.replay_frame.grid_remove()
+
     def move_snake(self, direction):
-        print(self.model.interpreter.calculate_vision(self.model.board))
         self.model.board.move_snake(direction)
         self.draw_board()
         self.update_displayed_qvalues()
-        print(self.model.interpreter.calculate_vision(self.model.board))
 
     def update_board(self, board):
         self.model.board = board
         self.draw_board()
 
     def draw_board(self):
+        if self.model.board.lost:
+            return
+
         tile_size = BOARD_HEIGHT / self.model.board.board_size
 
         canvas = self.board_frame
@@ -195,7 +230,12 @@ class GraphicalInterface:
             max_time = SPEED_LIMITS[self.speedlimit]
 
             while self.model.board.lost == False:
-                self.model.new_step()
+                if self.replay_mode and len(self.inputs) > 0:
+                    self.move_snake(self.inputs.pop(0))
+                elif self.replay_mode:
+                    self.replay_mode = False
+                else:
+                    self.model.new_step()
                 self.draw_board()
                 self.update_displayed_qvalues()
                 self.root.update_idletasks()
@@ -208,6 +248,10 @@ class GraphicalInterface:
                     prevtime = time.time()
                 if self.stopped == True:
                     break
+
+            if self.replay_mode:
+                self.replay_mode = False
+                self.stop()
 
             if self.stopped == False and not resume:
                 new_board = board.Board()

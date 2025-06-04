@@ -49,7 +49,7 @@ class Qlearner():
 
         longest_size = 0
         longest_life = 0
-        best = {"starting_state": 0, "inputs": []}
+        best = {"score": 0, "lifetime": 0, "starting_state": 0, "inputs": []}
 
         while ep_count < self.max_sessions:
             while self.board.lost == False and epoch < self.max_epoch:
@@ -61,13 +61,16 @@ class Qlearner():
             if epoch > longest_life:
                 print(f"Newest best lifetime: {epoch}")
                 longest_life = epoch
-            print(len(self.board.snake_pos))
+            print("Length: ", len(self.board.snake_pos))
             if len(self.board.snake_pos) > longest_size:
                 print(f"Newest longest size: {len(self.board.snake_pos)}")
                 longest_size = len(self.board.snake_pos)
                 
+                best["score"] = longest_size
+                best["lifetime"] = epoch
                 best['starting_state'] = self.starting_state
                 best['inputs'] = self.inputs
+                best["seed"] = self.board.rngseed
 
             self.board = board.Board()
             self.starting_state = self.board.area.tolist()
@@ -82,6 +85,8 @@ class Qlearner():
             self.save_qvalues_file()
         if self.save_replay:
             self.save_replay_file(best)
+        
+        return (best)
 
     def save_qvalues_file(self):
         numpy.savetxt(self.save_qval, self.agent.states)
