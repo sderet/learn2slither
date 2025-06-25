@@ -4,7 +4,7 @@ import numpy
 ACTIONS = ["U", "D", "L", "R"]
 DIRECTIONS = [[0, -1], [0, 1], [-1, 0], [1, 0]]
 
-VALUES = {'0': 0, 'G': 1, 'R': 2, 'S': 3, 'g': 4}
+VALUES = {"0": 0, "G": 1, "R": 2, "S": 3, "g": 4}
 
 
 class Agent:
@@ -22,9 +22,14 @@ class Agent:
         if random.uniform(0, 1) < self.exploration_rate:
             action = random.randrange(0, len(possible_directions))
 
-            # If choosing an action that will instantly lose, choose something else instead
+            # If choosing an action that will instantly lose,
+            # choose something else instead
             attempts = 0
-            while (self.states[state_serial_number][action] < lowest_reward * self.learning_rate * self.decay and attempts < 100):
+            while (
+                self.states[state_serial_number][action]
+                < lowest_reward * self.learning_rate * self.decay
+                and attempts < 100
+            ):
                 action = random.randrange(0, len(possible_directions))
                 attempts += 1
         else:
@@ -39,9 +44,14 @@ class Agent:
 
         score_before_action = self.states[previous_state][direction]
 
-        if (new_state >= 0):
+        if new_state >= 0:
             max_score_after_action = numpy.max(self.states[new_state])
         else:
             max_score_after_action = new_state
 
-        self.states[previous_state][direction] = (self.learning_rate * score_before_action) + (self.learning_rate * (reward + (self.decay * max_score_after_action)))
+        self.states[previous_state][direction] = (
+            self.learning_rate * score_before_action
+        ) + (
+            self.learning_rate
+            * (reward + (self.decay * max_score_after_action))
+        )
