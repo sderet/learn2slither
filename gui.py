@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import filedialog
 import json
+import numpy
+import argparse
 import board
 import time
 import learn2slither
@@ -21,33 +23,47 @@ def get_direction_vector(name):
     return DIRECTIONS[DIRECTIONS_NAMES.index(name)]
 
 class GraphicalInterface:
-    def __init__(self, model=learn2slither.Qlearner(), speedlimit = 2, stopped = False):
+    def __init__(self, model=learn2slither.Qlearner(), speedlimit = 2, stopped = True, no_learning = False, verbose = False):
         self.model = model
 
         self.speedlimit = speedlimit
 
-        self.stopped = False
+        self.stopped = stopped
+        self.model.no_learning = no_learning
+        self.model.verbose = verbose
 
         # Create the main window
         self.root = tk.Tk()
+        self.root.grid_columnconfigure(1, minsize=200, pad=10)
 
         self.root.title("Learn2Slither")
 
         self.board_frame = tk.Canvas(self.root, width=BOARD_HEIGHT, height=BOARD_HEIGHT, bg="ivory")
-        self.board_frame.grid()
+        self.board_frame.grid(padx=(10, 10))
 
         if stopped:
             self.pausebutton = tk.Button(self.root, text = "Resume", command=self.start)
         else:
             self.pausebutton = tk.Button(self.root, text = "Pause", command=self.stop)
-        self.pausebutton.grid(column=0, sticky="w")
+        self.pausebutton.grid(column=0, sticky="w", padx=(10, 0), pady=(10, 0))
         button = tk.Button(self.root, text = "Options", command=self.init_options_menu)
-        button.grid(column=0, sticky="w")
+        button.grid(column=0, sticky="w", padx=(10, 0))
+        button = tk.Button(self.root, text= "Save Q values", command=self.save_q_values)
+        button.grid(column=0, stick="w", padx=(10, 0))
+        
+        if not self.model.no_learning:
+            self.learning_button = tk.Button(self.root, text= "Stop learning", command=self.stop_learning)
+        else:
+            self.learning_button = tk.Button(self.root, text= "Resume learning", command=self.resume_learning)
+        self.learning_button.grid(column=0, stick="w", padx=(10, 0), pady=(0, 10))
 
-        button = tk.Button(self.root, text = "Reset", command=lambda: self.update_board(board.Board()))
-        button.grid(column=0, row=1, sticky="e")
+        button = tk.Button(self.root, text = "Reset board", command=lambda: self.update_board(board.Board()))
+        button.grid(column=0, row=1, sticky="e", padx=(0, 10), pady=(10, 0))
         button = tk.Button(self.root, text = "Load replay", command=self.open_replay_file)
-        button.grid(column=0, row=2, sticky="e")
+        button.grid(column=0, row=2, sticky="e", padx=(0, 10))
+
+        button = tk.Button(self.root, text= "Load Q values", command=self.load_q_values)
+        button.grid(column=0, row=3, sticky="e", padx=(0, 10), pady=(0, 10))
 
         # Q values and other snake info
         self.snake_info_frame = tk.Frame(self.root)
@@ -55,17 +71,17 @@ class GraphicalInterface:
         text = tk.StringVar(self.snake_info_frame)
         text.set("Snake size:")
         label = tk.Label(self.snake_info_frame, textvariable=text)
-        label.grid(column=0, row=0)
+        label.grid(column=0, row=0, sticky="w")
 
         self.snake_size = tk.StringVar(self.snake_info_frame, 0)
         self.snake_size.set(self.model.board.snake_size)
         label = tk.Label(self.snake_info_frame, textvariable=self.snake_size)
-        label.grid(column=1, row=0)
+        label.grid(column=1, row=0, sticky="w")
 
         text = tk.StringVar(self.snake_info_frame)
         text.set("Q values:")
         label = tk.Label(self.snake_info_frame, textvariable=text)
-        label.grid(column=0, row=1)
+        label.grid(column=0, row=1, sticky="w")
 
         self.q_values = []
         for index, qvalue in enumerate(DIRECTIONS):
@@ -76,7 +92,7 @@ class GraphicalInterface:
 
         self.update_displayed_qvalues()
 
-        self.snake_info_frame.grid(row=0, column=1)
+        self.snake_info_frame.grid(row=0, column=1, padx=(10, 20), sticky="w")
 
         # Movement buttons
         self.controls_frame = tk.Frame(self.root)
@@ -85,8 +101,11 @@ class GraphicalInterface:
             button = tk.Button(self.controls_frame, text = DIRECTIONS_FULL_NAMES[index], command=lambda dir=direction: self.move_snake(get_direction_vector(dir)))
             button.grid(column=1 + DIRECTIONS[index][0], row=2 + DIRECTIONS[index][1])
 
+        button = tk.Button(self.controls_frame, text= "Step", command=lambda: self.step())
+        button.grid(column=1, row=4, pady=(10, 0))
+
         if stopped:
-            self.controls_frame.grid()
+            self.controls_frame.grid(pady=(0, 10))
             self.bind_directions()
 
         # Replay controls
@@ -95,7 +114,7 @@ class GraphicalInterface:
         self.inputs = []
         self.replay_mode = False
         button = tk.Button(self.replay_frame, text = "Exit replay mode", command=self.exit_replay)
-        button.grid()
+        button.grid(sticky="w")
 
     def init_options_menu(self):
         self.stop()
@@ -114,10 +133,40 @@ class GraphicalInterface:
         self.current_speed_option = tk.StringVar(options_grid, FPS_OPTIONS[self.speedlimit])
         speeds = tk.OptionMenu(options_grid, self.current_speed_option, *FPS_OPTIONS, command=self.speed_option_changed)
         speeds.grid(column=1, row=0)
+        
+        # Learning rate
+        text = tk.StringVar(options_grid)
+        text.set("Learning rate")
+        label = tk.Label(options_grid, textvariable=text)
+        label.grid(column=0, row=1)
+
+        scale = tk.Scale(options_grid, from_=0, to=1, orient="horizontal", resolution=0.05, command=self.learning_rate_changed)
+        scale.set(self.model.agent.learning_rate)
+        scale.grid(column=1, row=1)
+
+        # Exploration rate
+        text = tk.StringVar(options_grid)
+        text.set("Exploration rate")
+        label = tk.Label(options_grid, textvariable=text)
+        label.grid(column=0, row=2)
+
+        scale = tk.Scale(options_grid, from_=0, to=1, orient="horizontal", resolution=0.05, command=self.exploration_rate_changed)
+        scale.set(self.model.agent.exploration_rate)
+        scale.grid(column=1, row=2)
+
+        # Decay rate
+        text = tk.StringVar(options_grid)
+        text.set("Reward decay rate")
+        label = tk.Label(options_grid, textvariable=text)
+        label.grid(column=0, row=3)
+
+        scale = tk.Scale(options_grid, from_=0, to=1, orient="horizontal", resolution=0.05, command=self.decay_changed)
+        scale.set(self.model.agent.decay)
+        scale.grid(column=1, row=3)
 
         # Close button
         button = tk.Button(self.menu_window, text = "Close", command=self.close_options_menu)
-        button.grid(sticky="e")
+        button.grid(sticky="e", padx=(10, 10), pady=(10, 10))
 
     def bind_directions(self):
         self.bindings = []
@@ -125,6 +174,9 @@ class GraphicalInterface:
         for index, direction in enumerate(DIRECTIONS_NAMES):
             bind = self.root.bind(f"<{DIRECTIONS_FULL_NAMES[index]}>", lambda e, dir=direction: self.move_snake(get_direction_vector(dir)))
             self.bindings.append(bind)
+        
+        bind = self.root.bind("<space>", lambda e: self.step())
+        self.bindings.append(bind)
 
     def unbind_directions(self):
         for index, direction_full in enumerate(DIRECTIONS_NAMES):
@@ -139,6 +191,30 @@ class GraphicalInterface:
             if (state >= 0):
                 qvalue.set(round(self.model.agent.states[state][order.index(DIRECTIONS_NAMES[index])], 2))
 
+    def save_q_values(self):
+        q_values_file = filedialog.asksaveasfilename(
+            title= "File name",
+            initialdir="./",
+            filetypes=(("Replay files", "*.qval"), ("All files", "*.*")),
+            defaultextension=".qval"
+        )
+
+        self.model.save_qval = q_values_file
+
+        self.model.save_qvalues_file()
+
+    def load_q_values(self):
+        q_values_file = filedialog.askopenfilename(
+            title= "Open a Q values file",
+            initialdir="./",
+            filetypes=(("Replay files", "*.qval"), ("All files", "*.*"))
+        )
+
+        try:
+            self.model.agent.states = numpy.loadtxt(q_values_file)
+        except FileNotFoundError:
+            return
+
     def open_replay_file(self):
         replay_filename = filedialog.askopenfilename(
             title= "Open a replay file",
@@ -146,8 +222,11 @@ class GraphicalInterface:
             filetypes=(("Replay files", "*.rpl"), ("All files", "*.*"))
         )
 
-        with open(replay_filename, 'r') as fd:
-            replay_data = json.load(fd)
+        try:
+            with open(replay_filename, 'r') as fd:
+                replay_data = json.load(fd)
+        except FileNotFoundError:
+            return
 
         self.model.board.set_board(replay_data)
         self.model.board.lost = False
@@ -164,10 +243,36 @@ class GraphicalInterface:
     def speed_option_changed(self, *args):
         self.speedlimit = FPS_OPTIONS.index(self.current_speed_option.get())
 
+    def learning_rate_changed(self, *args):
+        self.model.agent.learning_rate = float(args[0])
+
+    def exploration_rate_changed(self, *args):
+        self.model.agent.exploration_rate = float(args[0])
+
+    def decay_changed(self, *args):
+        self.model.agent.decay = float(args[0])
+
     def exit_replay(self):
         self.replay_mode = False
         self.stop()
         self.replay_frame.grid_remove()
+
+    def step(self):
+        if not self.model.board.lost:
+            if self.replay_mode and len(self.inputs) > 0:
+                self.move_snake(self.inputs.pop(0))
+            elif self.replay_mode:
+                self.replay_mode = False
+            else:
+                self.model.new_step()
+        else:
+            new_board = board.Board()
+            self.model.board = new_board
+        
+        self.draw_board()
+        self.update_displayed_qvalues()
+        self.root.update_idletasks()
+        self.root.update()
 
     def move_snake(self, direction):
         self.model.board.move_snake(direction)
@@ -207,6 +312,14 @@ class GraphicalInterface:
                         tile_size * (index + 1), tile_size * (column_index + 1),
                         tile_size * index, tile_size * column_index,
                         outline='', fill=COLORS[TILES.index(tile)])
+
+    def stop_learning(self):
+        self.model.no_learning = True
+        self.learning_button.config(text = "Resume learning", command=self.resume_learning)
+
+    def resume_learning(self):
+        self.model.no_learning = False
+        self.learning_button.config(text = "Stop learning", command=self.stop_learning)
 
     def stop(self):
         self.stopped = True
@@ -262,8 +375,17 @@ class GraphicalInterface:
         self.root.mainloop()
 
 if __name__ == "__main__":
-    model = learn2slither.Qlearner(load_qval="values.qval")
+    parser = argparse.ArgumentParser(prog='Learn2slither GUI', description="GUI of Q Learning program for the game Snake")
+    parser.add_argument("-i", "--input", type=str, default=False,
+                    help="The file to load Q values from")
+    parser.add_argument("-n", "--no-learning", action="store_true",
+                    help="Stops the Q values from updating as it happens")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                    help="Increase output verbosity")
+    
+    args = parser.parse_args()
+    model = learn2slither.Qlearner(load_qval=args.input)
 
-    gui = GraphicalInterface(model)
+    gui = GraphicalInterface(model,no_learning=args.no_learning, verbose=args.verbose)
     gui.draw_board()
     gui.start_loop()

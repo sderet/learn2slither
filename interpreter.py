@@ -22,7 +22,7 @@ class Interpreter:
         self.vision_length = vision_length
 
 
-    def calculate_vision(self, board: board.Board):
+    def calculate_vision(self, board: board.Board, verbose):
         head_pos = board.snake_pos[0]
         vision = []
 
@@ -32,6 +32,33 @@ class Interpreter:
             while not board.is_out_of_bounds(newest_pos):
                 vision[index].append(board.area[newest_pos[0]][newest_pos[1]])
                 newest_pos = [sum(x) for x in zip(newest_pos, direction)]
+
+        if verbose:
+            to_print = ""
+
+            left_align = len(vision[2]) + 2
+
+            vision[0].reverse()
+            vision[2].reverse()
+
+            to_print += f"{"W": >{left_align}}\n"
+            for tile in vision[0]:
+                to_print += f"{tile: >{left_align}}\n"
+            to_print += "W"
+            for tile in vision[2]:
+                to_print += tile
+            to_print += "H"
+            for tile in vision[3]:
+                to_print += tile
+            to_print += "W\n"
+            for tile in vision[1]:
+                to_print += f"{tile: >{left_align}}\n"
+            to_print += f"{"W": >{left_align}}\n"
+
+            print(to_print)
+
+            vision[0].reverse()
+            vision[2].reverse()
 
         types = []
 
@@ -55,11 +82,11 @@ class Interpreter:
         
         return (types)
 
-    def calculate_state(self, board: board.Board):
+    def calculate_state(self, board: board.Board, verbose=False):
         if board.lost:
             return REWARDS['L'], 0, 0
 
-        types = self.calculate_vision(board)
+        types = self.calculate_vision(board, verbose)
 
         actions = [x for (y,x) in sorted(zip(types, ACTIONS), key=lambda pair: pair[0])]
 
@@ -96,13 +123,6 @@ class Interpreter:
             reward += REWARDS['g']
 
         return reward
-
-    def save_qvalues(self):
-        numpy.savetxt(self.save_to, self.states)
-
-    def save_replay(self, replay):
-        with open(self.replay_file, 'w') as fd:
-            json.dump(replay, fd, indent=4)
 
 
 if __name__ == "__main__":
