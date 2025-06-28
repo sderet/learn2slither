@@ -39,7 +39,7 @@ class Interpreter:
             vision[0].reverse()
             vision[2].reverse()
 
-            to_print += f"{"W": >{left_align}}\n"
+            to_print += f"{'W': >{left_align}}\n"
             for tile in vision[0]:
                 to_print += f"{tile: >{left_align}}\n"
             to_print += "W"
@@ -51,7 +51,7 @@ class Interpreter:
             to_print += "W\n"
             for tile in vision[1]:
                 to_print += f"{tile: >{left_align}}\n"
-            to_print += f"{"W": >{left_align}}\n"
+            to_print += f"{'W': >{left_align}}\n"
 
             print(to_print)
 
