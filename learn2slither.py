@@ -29,7 +29,7 @@ class Qlearner:
         verbose=False,
     ):
         self.board = board.Board() if argboard is None else argboard
-        self.interpreter = interpreter.Interpreter() if arginterpreter is None \
+        self.interpreter = interpreter.Interpreter() if arginterpreter is None\
             else arginterpreter
         self.agent = agent.Agent() if argagent is None else argagent
 
@@ -37,7 +37,11 @@ class Qlearner:
         self.verbose = verbose
 
         if load_qval:
-            states = numpy.loadtxt(load_qval)
+            try:
+                states = numpy.loadtxt(load_qval)
+            except FileNotFoundError:
+                print(f"Input file {load_qval} does not exist.")
+                exit()
             if self.verbose:
                 print(f"Loaded model from {load_qval}.")
         else:  # Lowest possible number of states without repeats
@@ -146,26 +150,18 @@ class Qlearner:
         with open(self.save_replay, "w") as fd:
             json.dump(replay, fd)
 
-    def play_sessions(self):
-        ep_count = 0
-        epoch = 0
-        longest_size = 0
-
-        while ep_count < self.max_sessions:
-            while self.board.lost is False and epoch < self.max_epoch:
-                self.new_step()
-                epoch += 1
-                
-            if len(self.board.snake_pos) > longest_size:
-                longest_size = len(self.board.snake_pos)
-                
-            self.board = board.Board()
-            ep_count += 1
-        
-        print(f"Size: {longest_size} seed: {self.board.rngseed}")
 
 def play_wrapper(qlearner: Qlearner):
-    qlearner.play_sessions()
+    replay_filename = qlearner.save_replay
+    qlearner.save_replay = False
+    qvalues_filename = qlearner.save_qval
+    qlearner.save_qval = False
+
+    replay = qlearner.loop()
+    qlearner.save_replay = replay_filename
+    qlearner.save_qval = qvalues_filename
+
+    return qlearner, replay
 
 
 if __name__ == "__main__":
@@ -184,7 +180,7 @@ if __name__ == "__main__":
         "--sessions",
         type=int,
         default=100,
-        help="The number of sessions to execute. Has no effect if in GUI mode",
+        help="The number of sessions to execute. Has no effect in GUI mode",
     )
     parser.add_argument(
         "-i",
@@ -198,15 +194,15 @@ if __name__ == "__main__":
         "--output",
         type=str,
         default=False,
-        help="The file to save Q values to. Has no effect if in GUI mode",
+        help="The file to save Q values to. Has no effect in GUI mode",
     )
     parser.add_argument(
         "-r",
         "--replay",
         type=str,
         default=False,
-        help="The file to save the agent's best replay to." +
-        "Has no effect if in GUI mode",
+        help="The file to save the agent's best replay to. " +
+        "Has no effect in GUI mode",
     )
     parser.add_argument(
         "-n",
@@ -216,10 +212,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-t",
-        "--threading",
+        "--threads",
         type=int,
         default=1,
-        help="Stops the Q values from updating as it happens",
+        help="Train multiple snakes independently in different threads. " +
+        "If used with --replay or --output, will only create a file for" +
+        "the best performing snake. Has no effect in GUI mode",
     )
     parser.add_argument(
         "-v",
@@ -240,13 +238,13 @@ if __name__ == "__main__":
         )
         user_interface.draw_board()
         user_interface.start_loop()
-    elif args.threading > 1:
+    elif args.threads > 1:
         import multiprocessing.dummy as threading
-        pool = threading.Pool(args.threading)
+        pool = threading.Pool(args.threads)
 
         learners = []
-        for _ in range(args.threading):
-            l = Qlearner(
+        for _ in range(args.threads):
+            learner = Qlearner(
                 max_sessions=args.sessions,
                 load_qval=args.input,
                 save_qval=args.output,
@@ -254,9 +252,20 @@ if __name__ == "__main__":
                 verbose=args.verbose,
                 no_learning=args.no_learning,
             )
-            learners.append(l)
+            learners.append(learner)
 
-        pool.map(play_wrapper, learners)
+        results, replays = map(list, zip(*pool.map(play_wrapper, learners)))
+        if (args.output or args.replay):
+            index_of_best = replays.index(
+                max(
+                    replays,
+                    key=lambda replay: replay['score']
+                )
+            )
+            if args.output:
+                results[index_of_best].save_qvalues_file()
+            if args.replay:
+                results[index_of_best].save_replay_file(replays[index_of_best])
     else:
         qlearner = Qlearner(
             max_sessions=args.sessions,
