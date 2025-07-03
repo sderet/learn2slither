@@ -239,6 +239,9 @@ if __name__ == "__main__":
         user_interface.draw_board()
         user_interface.start_loop()
     elif args.threads > 1:
+        if args.threads > 256:
+            print(f"Too many threads ({args.threads}). Maximum value is 256")
+            exit()
         import multiprocessing.dummy as threading
         pool = threading.Pool(args.threads)
 
