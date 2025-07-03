@@ -17,9 +17,9 @@ class Qlearner:
 
     def __init__(
         self,
-        board=board.Board(),
-        interpreter=interpreter.Interpreter(),
-        agent=agent.Agent(),
+        argboard=None,
+        arginterpreter=None,
+        argagent=None,
         max_sessions=100,
         max_epoch=10000,
         load_qval=False,
@@ -28,9 +28,10 @@ class Qlearner:
         no_learning=False,
         verbose=False,
     ):
-        self.board = board
-        self.interpreter = interpreter
-        self.agent = agent
+        self.board = board.Board() if argboard is None else argboard
+        self.interpreter = interpreter.Interpreter() if arginterpreter is None \
+            else arginterpreter
+        self.agent = agent.Agent() if argagent is None else argagent
 
         self.no_learning = no_learning
         self.verbose = verbose
@@ -145,6 +146,27 @@ class Qlearner:
         with open(self.save_replay, "w") as fd:
             json.dump(replay, fd)
 
+    def play_sessions(self):
+        ep_count = 0
+        epoch = 0
+        longest_size = 0
+
+        while ep_count < self.max_sessions:
+            while self.board.lost is False and epoch < self.max_epoch:
+                self.new_step()
+                epoch += 1
+                
+            if len(self.board.snake_pos) > longest_size:
+                longest_size = len(self.board.snake_pos)
+                
+            self.board = board.Board()
+            ep_count += 1
+        
+        print(f"Size: {longest_size} seed: {self.board.rngseed}")
+
+def play_wrapper(qlearner: Qlearner):
+    qlearner.play_sessions()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -193,6 +215,13 @@ if __name__ == "__main__":
         help="Stops the Q values from updating as it happens",
     )
     parser.add_argument(
+        "-t",
+        "--threading",
+        type=int,
+        default=1,
+        help="Stops the Q values from updating as it happens",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -211,6 +240,23 @@ if __name__ == "__main__":
         )
         user_interface.draw_board()
         user_interface.start_loop()
+    elif args.threading > 1:
+        import multiprocessing.dummy as threading
+        pool = threading.Pool(args.threading)
+
+        learners = []
+        for _ in range(args.threading):
+            l = Qlearner(
+                max_sessions=args.sessions,
+                load_qval=args.input,
+                save_qval=args.output,
+                save_replay=args.replay,
+                verbose=args.verbose,
+                no_learning=args.no_learning,
+            )
+            learners.append(l)
+
+        pool.map(play_wrapper, learners)
     else:
         qlearner = Qlearner(
             max_sessions=args.sessions,
