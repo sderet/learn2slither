@@ -2,4 +2,7 @@ venv*
 __pycache__
 
 *.qval
+!models/*.qval
+
 *.rpl
+!replays/*.rpl
