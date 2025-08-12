@@ -199,7 +199,7 @@ class GraphicalInterface:
         scale = tk.Scale(
             options_grid,
             from_=0,
-            to=1,
+            to=0.5,
             orient="horizontal",
             resolution=0.05,
             command=self.learning_rate_changed,
